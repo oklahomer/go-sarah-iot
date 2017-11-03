@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/oklahomer/go-sarah-iot"
@@ -29,6 +30,10 @@ type ResponsePayload struct {
 }
 
 var _ DecodedPayload = (*ResponsePayload)(nil)
+
+type TimeStamper interface {
+	SentAt() time.Time
+}
 
 // Decoder represents an interface that decode given WebSocket payload.
 type Decoder interface {

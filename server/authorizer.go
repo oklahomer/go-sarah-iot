@@ -4,6 +4,7 @@ import "net/http"
 
 // Device contains authorized iot device information.
 type Device struct {
+	ID string
 }
 
 // Authorizer defines an interface that can be used to authorize incoming request from iot device.
