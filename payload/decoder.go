@@ -17,6 +17,7 @@ import (
 // DecodedPayload represents an interface that all decoded payload must satisfy.
 type DecodedPayload interface{}
 
+// RoledPayload represents incoming payload with specific *iot.Role.
 type RoledPayload struct {
 	Role    *iot.Role
 	Content interface{}
@@ -24,6 +25,8 @@ type RoledPayload struct {
 
 var _ DecodedPayload = (*RoledPayload)(nil)
 
+// ResponosePayload represents incoming payload with transaction id.
+// TODO rename this to TransactionalPayload since this can be part of both requesting and response payload.
 type ResponsePayload struct {
 	TransactionID string
 	Content       interface{}
@@ -31,17 +34,22 @@ type ResponsePayload struct {
 
 var _ DecodedPayload = (*ResponsePayload)(nil)
 
-type TimeStamper interface {
+// Timestamper defines an interface that all payloads must implement to indicate sending time.
+// IoT device may not have accurate time, so server.Adapter may use reception timestamp if incoming payload does not implement this interface.
+type Timestamper interface {
 	SentAt() time.Time
 }
 
-// Decoder represents an interface that decode given WebSocket payload.
+// Decoder represents an interface that decodes given WebSocket payload.
 type Decoder interface {
 	AddMapping(*iot.Role, reflect.Type)
 	Decode(int, io.Reader) (DecodedPayload, error)
 }
 
 // NewDecoder creates new defaultDecoder and returns it as Decoder.
+//
+// This receives incoming payload in form of io.Reader, and tries to decode its body as JSON.
+// To alter serialization/deserialization behavior, implement own Encoder/Decoder and replace default ones.
 func NewDecoder() Decoder {
 	return &defaultDecoder{
 		mapper: &payloadMapper{
