@@ -7,6 +7,19 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
+type DummyStorage struct {
+	AddFunc func(string, chan *Response)
+	GetFunc func(string) (chan *Response, error)
+}
+
+func (ds *DummyStorage) Add(key string, responses chan *Response) {
+	ds.AddFunc(key, responses)
+}
+
+func (ds *DummyStorage) Get(key string) (chan *Response, error) {
+	return ds.GetFunc(key)
+}
+
 func TestNewTransactionStorageConfig(t *testing.T) {
 	config := NewTransactionStorageConfig()
 	if config == nil {

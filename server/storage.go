@@ -54,7 +54,7 @@ func (s *transactionStorage) Add(key string, destination chan *Response) {
 func (s *transactionStorage) Get(key string) (chan *Response, error) {
 	val, hasKey := s.cache.Get(key)
 	if !hasKey || val == nil {
-		return nil, nil
+		return nil, fmt.Errorf("value not found with key: %s", key)
 	}
 
 	switch v := val.(type) {
