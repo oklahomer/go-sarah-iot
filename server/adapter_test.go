@@ -570,7 +570,7 @@ func Test_receivePayload(t *testing.T) {
 			Type:   reflect.TypeOf(&Input{}),
 		},
 		{
-			Payload: &payload.ResponsePayload{
+			Payload: &payload.TransactionalPayload{
 				TransactionID: "123",
 				Content:       struct{}{},
 			},

@@ -464,7 +464,7 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 					log.Errorf("Failed to enqueue incoming RoledPayload: %s.", err.Error())
 				}
 
-			case *payload.ResponsePayload:
+			case *payload.TransactionalPayload:
 				// IoT device may not have access to accurate time.
 				// If not, fill it with current server time.
 				timeStamper, ok := typed.Content.(payload.Timestamper)
@@ -483,7 +483,7 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 				}
 				err := input(r)
 				if err != nil {
-					log.Errorf("Failed to enqueue incoming ResponsePayload: %s.", err.Error())
+					log.Errorf("Failed to enqueue incoming TransactionalPayload: %s.", err.Error())
 				}
 
 			default:

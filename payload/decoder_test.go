@@ -86,7 +86,7 @@ func TestDefaultDecoder_Decode(t *testing.T) {
 	}
 }
 
-func TestDefaultDecoder_Decode_ResponsePayload(t *testing.T) {
+func TestDefaultDecoder_Decode_TransactionalPayload(t *testing.T) {
 	type content struct {
 		Status string `json:"status"`
 	}
@@ -111,12 +111,12 @@ func TestDefaultDecoder_Decode_ResponsePayload(t *testing.T) {
 			t.Errorf("Unexpected error is returned on test #%d: %s.", i, err.Error())
 		}
 
-		responsePayload, ok := p.(*ResponsePayload)
+		transactionalPayload, ok := p.(*TransactionalPayload)
 		if !ok {
 			t.Fatalf("Unexpected type is returned on test #%d: %+v.", i, p)
 		}
 
-		c, ok := responsePayload.Content.(*content)
+		c, ok := transactionalPayload.Content.(*content)
 		if !ok {
 			t.Fatalf("Unexpected content type is returned on test #%d: %+v.", i, p)
 		}

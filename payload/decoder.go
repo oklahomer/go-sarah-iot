@@ -26,13 +26,12 @@ type RoledPayload struct {
 var _ DecodedPayload = (*RoledPayload)(nil)
 
 // ResponosePayload represents incoming payload with transaction id.
-// TODO rename this to TransactionalPayload since this can be part of both requesting and response payload.
-type ResponsePayload struct {
+type TransactionalPayload struct {
 	TransactionID string
 	Content       interface{}
 }
 
-var _ DecodedPayload = (*ResponsePayload)(nil)
+var _ DecodedPayload = (*TransactionalPayload)(nil)
 
 // Timestamper defines an interface that all payloads must implement to indicate sending time.
 // IoT device may not have accurate time, so server.Adapter may use reception timestamp if incoming payload does not implement this interface.
@@ -104,7 +103,7 @@ func (d *defaultDecoder) Decode(messageType int, reader io.Reader) (DecodedPaylo
 
 		tidValue := res.Get("transaction_id")
 		if tidValue.Exists() {
-			return &ResponsePayload{
+			return &TransactionalPayload{
 				TransactionID: tidValue.String(),
 				Content:       payload,
 			}, nil
