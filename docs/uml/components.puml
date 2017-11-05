@@ -1,0 +1,119 @@
+@startuml
+
+title **Components' Relationships and their Roles**\ncomponents colored lightgreen are provided by this package
+
+' components
+
+actor User as user
+
+cloud "Chat services" as chatServices {
+    component "Slack" as slack {
+    }
+
+    component "LINE" as line {
+    }
+}
+
+component "Server" as server {
+    component "Sarah instance" as sarah {
+        component "Slack bot" as slackBot {
+            interface "WebSocket" as slackInterface
+            component "Commands" as slackCommands {
+                interface "Thermo Command" as thermoCommand
+            }
+        }
+
+        component "LINE bot" as lineBot {
+            interface "HTTP" as lineInterface
+            component "Commands" as lineCommands {
+                interface "Capture Command" as captureCommand
+                interface "Another Command" #gray
+            }
+        }
+
+        interface "Dispatcher" as dispatcher
+
+        component "IoT bot (server)" as iotServer #lightgreen {
+            interface "Bot.SendMessage" as iotSendMessage
+        }
+    }
+}
+note left of server
+Server with fixed IP/DNS setting
+Runs one Sarah instance that contains IoT bot and others
+so they can communicate each other to pass around user's commands and responses
+===
+Containing IoT bot works as "brain" to orchestrate IoT devices as below:
+- dispatch task to device(s) with corresponding Role
+- wait till all responses come or timeouts
+- store states if needed
+- send responses back to caller
+end note
+
+component "IoT Device" as device1 {
+    component "Sarah instance" as sarahDevice1 {
+        component "IoT bot (device)" as iotDevice1 #lightgreen {
+        }
+	    note right of iotDevice1
+	    IoT device with
+	    "ThermoMeter" role
+	    end note
+    }
+
+    interface "Thermometer" as thermometer1
+}
+note top of device1
+IoT device such as Raspberry Pi with no Fixed IP address
+Initialize WebSocket connection to Server
+===
+Server-Device
+{"type": "ping"}
+{"type": "pong"}
+{"type": "roled", "role": "thermo", "transaction_id": "thermo123", content": {}}
+
+Device-Server
+{"type": "ping"}
+{"type": "pong"}
+{"type": "roled", "role": "thermo", "transaction_id": "thermo123", "content": {"type": "response", "temperature": 100}}
+{"type": "roled", "role": "thermo", "content": {"type": "scheduled_report", "temperature": 100}
+end note
+
+component "IoT Device" as device2 {
+    component "Sarah instance" as sarahDevice2 {
+        component "IoT bot (device)" as iotDevice2 #lightgreen {
+        }
+        note right of iotDevice2
+        IoT device with
+        "Camera" and "ThermoMeter" roles
+        end note
+    }
+
+    interface "Thermometer" as thermometer2
+    interface "Camera" as camera
+}
+
+' interaction
+
+user -[#green]down-> line : .capture
+user -[#blue]down-> slack : .thermo
+
+line -[#green]down-> lineInterface : Proxy
+slack -[#blue]down-> slackInterface : Proxy
+
+lineInterface -[#green]down-> captureCommand : Execute
+slackInterface -[#blue]down-> thermoCommand : Execute
+
+captureCommand -[#green]down-> dispatcher : Translate .capture to\ncorresponding IoT payload
+thermoCommand -[#blue]down-> dispatcher : Translate .thermo to\ncorresponding IoT payload
+
+dispatcher <-down-> iotSendMessage : Enqueue payload and sync response
+
+iotSendMessage -[#blue]down-> iotDevice1 : Thermo\ncommand
+iotSendMessage -[#green]down-> iotDevice2 : Capture\ncommand
+iotSendMessage -[#blue]down-> iotDevice2 : Thermo\ncommand
+
+iotDevice1 -down-> thermometer1 : Measure\ntemperature
+iotDevice2 -down-> thermometer2 : Measure\ntemperature
+iotDevice2 -down-> camera : Capture\nimage
+
+@enduml
