@@ -94,6 +94,22 @@ func TestWithDecoder(t *testing.T) {
 	}
 }
 
+func TestWithEncoder(t *testing.T) {
+	encoder := &DummyEncoder{}
+	opt := WithEncoder(encoder)
+	adapter := &adapter{}
+
+	err := opt(adapter)
+
+	if err != nil {
+		t.Fatalf("AdapterOption returned an error: %s.", err.Error)
+	}
+
+	if adapter.encoder != encoder {
+		t.Fatalf("Given payload.Encoder is not set: %+v", adapter.encoder)
+	}
+}
+
 func TestWithUpgrader(t *testing.T) {
 	upgrader := &websocket.Upgrader{}
 	opt := WithUpgrader(upgrader)

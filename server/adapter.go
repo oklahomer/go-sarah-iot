@@ -29,6 +29,14 @@ func WithDecoder(decoder payload.Decoder) AdapterOption {
 	}
 }
 
+// WithEncoder creates AdapterOption with given payload.Encoder implementation.
+func WithEncoder(encoder payload.Encoder) AdapterOption {
+	return func(a *adapter) error {
+		a.encoder = encoder
+		return nil
+	}
+}
+
 // WithUpgrader creates AdapterOption with given *websocket.Upgrader.
 func WithUpgrader(upgrader *websocket.Upgrader) AdapterOption {
 	return func(a *adapter) error {
