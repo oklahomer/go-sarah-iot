@@ -37,6 +37,14 @@ func WithUpgrader(upgrader *websocket.Upgrader) AdapterOption {
 	}
 }
 
+// WithTransactionStorage creates AdapterOption with given TransactionStorage.
+func WithTransactionStorage(storage TransactionStorage) AdapterOption {
+	return func(a *adapter) error {
+		a.storage = storage
+		return nil
+	}
+}
+
 // Config contains some configuration variables for iot server Adapter.
 type Config struct {
 	WebSocketPath string `json:"websocket_path" yaml:"websocket_path"`
@@ -56,7 +64,10 @@ type adapter struct {
 	config     *Config
 	authorizer Authorizer
 	decoder    payload.Decoder
+	encoder    payload.Encoder
 	upgrader   *websocket.Upgrader
+	storage    TransactionStorage
+	output     chan sarah.Output
 }
 
 var _ sarah.Adapter = (*adapter)(nil)
@@ -81,28 +92,21 @@ func (a *adapter) Run(ctx context.Context, input func(sarah.Input) error, errNot
 }
 
 // SendMessage let Bot send message to enslaved devices.
-func (a *adapter) SendMessage(context.Context, sarah.Output) {
-	panic("implement me")
+func (a *adapter) SendMessage(ctx context.Context, o sarah.Output) {
+	// Loosely validate type before enqueue.
+	switch o.(type) {
+	case *output, *transactionalOutput:
+		a.output <- o
+
+	default:
+		log.Errorf("Uncontrollable output type is passed: %T", o)
+
+	}
 }
 
 func (a *adapter) superviseConnection(ctx context.Context, incomingConn <-chan connection, input func(input sarah.Input) error) {
 	var conns []connection
 	closingConn := make(chan connection, 1)
-
-	inputSwitcher := func(i sarah.Input) error {
-		switch i.(type) {
-		case *Input:
-			return input(i)
-
-		case *ResponseInput:
-			// TODO handle response with stored transaction data
-			return nil
-
-		default:
-			return fmt.Errorf("uncontrollable input type is given: %T", i)
-
-		}
-	}
 
 	for {
 		select {
@@ -120,7 +124,10 @@ func (a *adapter) superviseConnection(ctx context.Context, incomingConn <-chan c
 
 		case conn := <-incomingConn:
 			go func() {
-				err := a.receivePayload(conn, inputSwitcher)
+				callback := func(i sarah.Input) error {
+					return handleInput(i, a.storage, input)
+				}
+				err := a.receivePayload(conn, callback)
 				if err != nil {
 					// Connection is stale or is intentionally closed.
 					log.Errorf(
@@ -135,6 +142,32 @@ func (a *adapter) superviseConnection(ctx context.Context, incomingConn <-chan c
 			}()
 
 			conns = append(conns, conn)
+
+		case o := <-a.output:
+			messageType, outgoing, err := encodeOutput(o, a.encoder)
+			if err != nil {
+				log.Errorf("Failed to encode output: %+v", err.Error())
+				continue
+			}
+
+			i := 0
+			for _, conn := range extractDestConns(o.Destination(), conns) {
+				err := conn.WriteMessage(messageType, outgoing)
+				if err != nil {
+					// TODO enqueue ping at this point?
+					log.Errorf("Failed to send message: %s. %s.", conn.Device().ID, err.Error())
+					continue
+				}
+
+				i++
+			}
+
+			t, isTransactional := o.(*transactionalOutput)
+			if isTransactional {
+				response := make(chan *Response, i)
+				a.storage.Add(t.transactionID, response)
+				go awaitResponse(ctx, i, response, t.c)
+			}
 
 		case c := <-closingConn:
 			connFound := false
@@ -160,11 +193,131 @@ func (a *adapter) superviseConnection(ctx context.Context, incomingConn <-chan c
 	}
 }
 
+func handleInput(input sarah.Input, storage TransactionStorage, receiveInput func(sarah.Input) error) error {
+	switch typed := input.(type) {
+	case *Input:
+		// Pass it to sarah.Runner to search and execute corresponding sarah.Command.
+		return receiveInput(input)
+
+	case *ResponseInput:
+		// Incoming payload has transaction ID with it.
+		// Consider this as response from enslaved devices.
+		ch, err := storage.Get(typed.TransactionID)
+		if err != nil {
+			return err
+		}
+
+		select {
+		case ch <- &Response{Content: typed.Content, Device: typed.Device}:
+			// O.K.
+			return nil
+
+		default:
+			// Receiving channel should have large enough buffer to ensure enqueue operation does not block.
+			// Ideal buffer length is equal to the number of expecting responses,
+			// which is the number of Devices request is being sent.
+			return fmt.Errorf(
+				"failed to pass response from device %s due to lack of channel capacity",
+				typed.Device.ID,
+			)
+
+		}
+
+	default:
+		return fmt.Errorf("uncontrollable input type is given: %T", input)
+
+	}
+}
+
+func encodeOutput(o sarah.Output, e payload.Encoder) (int, []byte, error) {
+	switch typed := o.(type) {
+	case *output:
+		return e.EncodeRoled(typed.destination.role, typed.content)
+
+	case *transactionalOutput:
+		return e.EncodeTransactional(typed.transactionID, typed.destination.role, typed.content)
+
+	default:
+		return 0, nil, fmt.Errorf("uncontrollable type of sarah.Output is given: %+v", o)
+
+	}
+}
+
+func extractDestConns(destination sarah.OutputDestination, connections []connection) []connection {
+	var conns []connection
+
+	d, ok := destination.(*Destination)
+	if !(ok) {
+		return conns
+	}
+
+	// deviceID or iot.Role is always set. See DestinationBuilder.Build.
+	if d.deviceID == "" {
+		for _, conn := range connections {
+			if conn.Device().Roles.Contains(d.role) {
+				conns = append(conns, conn)
+			}
+		}
+	} else {
+		for _, conn := range connections {
+			if d.deviceID == conn.Device().ID {
+				// Device ID is unique.
+				// If one corresponding connection is found, it's O.K. to skip the rest of the connections.
+				conns = append(conns, conn)
+				break
+			}
+		}
+	}
+
+	return conns
+}
+
+func awaitResponse(ctx context.Context, i int, in <-chan *Response, out chan<- []*Response) {
+	var responses []*Response
+
+	notifyResponses := func(o chan<- []*Response, r []*Response) {
+		select {
+		case o <- r:
+			// O.K.
+
+		default:
+			log.Errorf("Response can not be sent because the caller is not listening to this channel.")
+
+		}
+	}
+
+	if i == 0 {
+		notifyResponses(out, responses)
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case r := <-in:
+			responses = append(responses, r)
+			if len(responses) == i {
+				notifyResponses(out, responses)
+				return
+			}
+
+		case <-time.NewTimer(1 * time.Minute).C:
+			// Timeout. Send already returned responses and quit.
+			notifyResponses(out, responses)
+			return
+
+		}
+	}
+}
+
 // NewAdapter creates new Adapter with given *Config, Authorizer implementation and arbitrary amount of AdapterOption instances.
 func NewAdapter(c *Config, authorizer Authorizer, options ...AdapterOption) (sarah.Adapter, error) {
 	a := &adapter{
 		config:     c,
 		authorizer: authorizer,
+		output:     make(chan sarah.Output, 100),
 	}
 
 	for _, opt := range options {
@@ -185,6 +338,16 @@ func NewAdapter(c *Config, authorizer Authorizer, options ...AdapterOption) (sar
 	// If no payload.Decoder is provided via AdapterOption, set default decoder.
 	if a.decoder == nil {
 		a.decoder = payload.NewDecoder()
+	}
+
+	// If no payload.Encoder is provided via AdapterOption, set default encoder.
+	if a.encoder == nil {
+		a.encoder = payload.NewEncoder()
+	}
+
+	// If no TransactionStorage is provided via AdapterOption, set default storage.
+	if a.storage == nil {
+		a.storage = NewTransactionStorage(NewTransactionStorageConfig())
 	}
 
 	return a, nil
@@ -283,7 +446,7 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 			case *payload.RoledPayload:
 				// IoT device may not have access to accurate time.
 				// If not, fill it with current server time.
-				timeStamper, ok := typed.Content.(payload.TimeStamper)
+				timeStamper, ok := typed.Content.(payload.Timestamper)
 				var timestamp time.Time
 				if ok {
 					timestamp = timeStamper.SentAt()
@@ -296,12 +459,15 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 					Device:    device,
 					TimeStamp: timestamp,
 				}
-				input(i)
+				err := input(i)
+				if err != nil {
+					log.Errorf("Failed to enqueue incoming RoledPayload: %s.", err.Error())
+				}
 
 			case *payload.ResponsePayload:
 				// IoT device may not have access to accurate time.
 				// If not, fill it with current server time.
-				timeStamper, ok := typed.Content.(payload.TimeStamper)
+				timeStamper, ok := typed.Content.(payload.Timestamper)
 				var timestamp time.Time
 				if ok {
 					timestamp = timeStamper.SentAt()
@@ -315,7 +481,10 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 					Device:        device,
 					TimeStamp:     timestamp,
 				}
-				input(r)
+				err := input(r)
+				if err != nil {
+					log.Errorf("Failed to enqueue incoming ResponsePayload: %s.", err.Error())
+				}
 
 			default:
 				log.Errorf("Uncontrollable payload type is returned: %+v", p)
@@ -345,6 +514,7 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 type connection interface {
 	Close() error
 	NextReader() (int, io.Reader, error)
+	WriteMessage(int, []byte) error
 	Pong() error
 	Device() *Device
 }
@@ -360,6 +530,10 @@ func (cw *connWrapper) Close() error {
 
 func (cw *connWrapper) NextReader() (int, io.Reader, error) {
 	return cw.conn.NextReader()
+}
+
+func (cw *connWrapper) WriteMessage(messageType int, payload []byte) error {
+	return cw.conn.WriteMessage(messageType, payload)
 }
 
 func (cw *connWrapper) Pong() error {

@@ -19,6 +19,24 @@ import (
 	"golang.org/x/net/context"
 )
 
+type DummyEncoder struct {
+	EncodeFunc              func(string, interface{}) (int, []byte, error)
+	EncodeRoledFunc         func(*iot.Role, interface{}) (int, []byte, error)
+	EncodeTransactionalFunc func(string, *iot.Role, interface{}) (int, []byte, error)
+}
+
+func (de *DummyEncoder) Encode(payloadType string, content interface{}) (int, []byte, error) {
+	return de.EncodeFunc(payloadType, content)
+}
+
+func (de *DummyEncoder) EncodeRoled(role *iot.Role, content interface{}) (int, []byte, error) {
+	return de.EncodeRoledFunc(role, content)
+}
+
+func (de *DummyEncoder) EncodeTransactional(tid string, role *iot.Role, content interface{}) (int, []byte, error) {
+	return de.EncodeTransactionalFunc(tid, role, content)
+}
+
 type DummyDecoder struct {
 	AddMappingFunc func(*iot.Role, reflect.Type)
 	DecodeFunc     func(int, io.Reader) (payload.DecodedPayload, error)
@@ -33,10 +51,11 @@ func (d *DummyDecoder) Decode(messageType int, reader io.Reader) (payload.Decode
 }
 
 type DummyConnection struct {
-	CloseFunc      func() error
-	NextReaderFunc func() (int, io.Reader, error)
-	PongFunc       func() error
-	DeviceFunc     func() *Device
+	CloseFunc        func() error
+	NextReaderFunc   func() (int, io.Reader, error)
+	WriteMessageFunc func(int, []byte) error
+	PongFunc         func() error
+	DeviceFunc       func() *Device
 }
 
 func (d *DummyConnection) Close() error {
@@ -45,6 +64,10 @@ func (d *DummyConnection) Close() error {
 
 func (d *DummyConnection) NextReader() (int, io.Reader, error) {
 	return d.NextReaderFunc()
+}
+
+func (d *DummyConnection) WriteMessage(messageType int, output []byte) error {
+	return d.WriteMessageFunc(messageType, output)
 }
 
 func (d *DummyConnection) Pong() error {
@@ -87,6 +110,22 @@ func TestWithUpgrader(t *testing.T) {
 	}
 }
 
+func TestWithTransactionStorage(t *testing.T) {
+	storage := &transactionStorage{}
+	opt := WithTransactionStorage(storage)
+	adapter := &adapter{}
+
+	err := opt(adapter)
+
+	if err != nil {
+		t.Fatalf("AdapterOption returned an error: %s.", err.Error)
+	}
+
+	if adapter.storage != storage {
+		t.Fatalf("Given *websocket.Upgrader is not set: %+v", adapter.upgrader)
+	}
+}
+
 func TestNewConfig(t *testing.T) {
 	c := NewConfig()
 
@@ -125,12 +164,20 @@ func TestNewAdapter(t *testing.T) {
 		t.Errorf("Given Authorizer is not set: %+v", typed.authorizer)
 	}
 
+	if typed.output == nil {
+		t.Error("Channel for sarah.Output is not set.")
+	}
+
 	if typed.upgrader == nil {
 		t.Errorf("Default *websocket.Upgrader must be set when one is not supplied with AdapterOption.")
 	}
 
 	if typed.decoder == nil {
 		t.Errorf("Default payload.Decoder must be set when one is not supplied with AdapterOption.")
+	}
+
+	if typed.storage == nil {
+		t.Errorf("Default TransactionStorage must be set when one is not supplied with AdapterOption.")
 	}
 }
 
@@ -244,8 +291,7 @@ func TestAdapter_Run(t *testing.T) {
 			AuthorizeFunc: func(_ *http.Request) (*Device, error) {
 				return &Device{}, nil
 			},
-		},
-	}
+		}}
 
 	// Run adapter
 	ctx, cancel := context.WithCancel(context.Background())
@@ -279,6 +325,37 @@ func TestAdapter_Run(t *testing.T) {
 
 	if conn == nil {
 		t.Fatalf("Connection is not returned.")
+	}
+}
+
+type dummyOutput struct {
+}
+
+func (*dummyOutput) Destination() sarah.OutputDestination {
+	panic("implement me")
+}
+
+func (*dummyOutput) Content() interface{} {
+	panic("implement me")
+}
+
+func TestAdapter_SendMessage(t *testing.T) {
+	outputs := []sarah.Output{
+		&transactionalOutput{},
+		&output{},
+		&dummyOutput{}, // Not subject to enqueue via adapter.output.
+	}
+
+	a := &adapter{
+		output: make(chan sarah.Output, len(outputs)),
+	}
+
+	for _, output := range outputs {
+		a.SendMessage(context.TODO(), output)
+	}
+
+	if len(a.output) != 2 {
+		t.Errorf("Unexpected number of sarah.Output instances are enqueued: %d.", len(a.output))
 	}
 }
 
@@ -560,5 +637,272 @@ func Test_receivePayload_CloseMessage(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("Unexpected error is rerturned: %s.", err.Error())
+	}
+}
+
+func Test_handleInput_Input(t *testing.T) {
+	storage := &DummyStorage{}
+	receiveInput := func(in sarah.Input) error {
+		_, ok := in.(*Input)
+		if ok {
+			return nil
+		}
+
+		t.Errorf("Invalid implementation of sarah.Input is passed: %T.", in)
+		return nil
+	}
+
+	err := handleInput(&Input{}, storage, receiveInput)
+
+	if err != nil {
+		t.Errorf("Unexpected error is returned: %s.", err.Error())
+	}
+}
+
+func Test_handleInput_ResponseInput(t *testing.T) {
+	tests := []struct {
+		input  *ResponseInput
+		stored bool
+		block  bool
+	}{
+		{
+			input:  &ResponseInput{},
+			stored: true,
+			block:  false,
+		},
+		{
+			input:  &ResponseInput{},
+			stored: false,
+			block:  false,
+		},
+		{
+			input: &ResponseInput{
+				Device: &Device{
+					ID: "id",
+				},
+			},
+			stored: true,
+			block:  true,
+		},
+	}
+
+	notStored := errors.New("")
+	for i, test := range tests {
+		var buffer int
+		if !test.block {
+			buffer = 1
+		}
+		responseCh := make(chan *Response, buffer)
+		storage := &DummyStorage{
+			GetFunc: func(_ string) (chan *Response, error) {
+				if test.stored {
+					return responseCh, nil
+				} else {
+					return nil, notStored
+				}
+			},
+		}
+		inputCh := make(chan sarah.Input, 1)
+		receiveInput := func(in sarah.Input) error {
+			_, ok := in.(*Input)
+			if ok {
+				inputCh <- in
+				return nil
+			}
+
+			t.Errorf("Invalid implementation of sarah.Input is passed on test #%d: %T.", i, in)
+			return nil
+		}
+
+		err := handleInput(test.input, storage, receiveInput)
+
+		if !test.stored && err == nil {
+			t.Errorf("Error should be returend when storage does not return channel on test #%d.", i)
+		} else if test.block && err == nil {
+			t.Errorf("Error should immediately be returned when channel is blocked on test #%d.", i)
+		} else if test.stored && !test.block && err != nil {
+			t.Errorf("Unexpected error is returned on test #%d: %s.", i, err.Error())
+		} else if test.stored && !test.block && len(responseCh) != 1 {
+			t.Errorf("Expected response is not enqueued on test #%d.", i)
+		}
+	}
+}
+
+func Test_encodeOutput(t *testing.T) {
+	outputs := []sarah.Output{
+		&output{
+			destination: &Destination{
+				role: &iot.Role{},
+			},
+		},
+		&transactionalOutput{
+			destination: &Destination{
+				role: &iot.Role{},
+			},
+		},
+		&dummyOutput{},
+	}
+
+	for i, out := range outputs {
+		roledCalled := false
+		transactionalCalled := false
+		encoder := &DummyEncoder{
+			EncodeRoledFunc: func(_ *iot.Role, _ interface{}) (int, []byte, error) {
+				roledCalled = true
+				return websocket.TextMessage, []byte(""), nil
+			},
+			EncodeTransactionalFunc: func(_ string, _ *iot.Role, _ interface{}) (int, []byte, error) {
+				transactionalCalled = true
+				return websocket.TextMessage, []byte(""), nil
+			},
+		}
+
+		_, _, err := encodeOutput(out, encoder)
+
+		switch out.(type) {
+		case *output:
+			if !roledCalled {
+				t.Errorf("Encoder.EncodeRolled is not called on test #%d.", i)
+			}
+
+		case *transactionalOutput:
+			if !transactionalCalled {
+				t.Errorf("Encoder.EncodeTransactional is not called on test #%d.", i)
+			}
+
+		default:
+			if err == nil {
+				t.Errorf("Error should be returned when uncontrollable sarah.Output is fed on test #%d.", i)
+			}
+
+		}
+	}
+}
+
+func Test_extractDestConns(t *testing.T) {
+	tests := []struct {
+		expectedN   int
+		destination sarah.OutputDestination
+		connections []connection
+	}{
+		{
+			expectedN: 1,
+			destination: &Destination{
+				deviceID: "123",
+			},
+			connections: []connection{
+				&DummyConnection{
+					DeviceFunc: func() *Device {
+						return &Device{ID: "invalid"}
+					},
+				},
+				&DummyConnection{
+					DeviceFunc: func() *Device {
+						return &Device{ID: "123"}
+					},
+				},
+				&DummyConnection{
+					DeviceFunc: func() *Device {
+						return &Device{ID: "123"} // Should be ignored due to ID duplication.
+					},
+				},
+			},
+		},
+		{
+			expectedN: 2,
+			destination: &Destination{
+				role: iot.NewRole("validRole"),
+			},
+			connections: []connection{
+				&DummyConnection{
+					DeviceFunc: func() *Device {
+						return &Device{Roles: iot.Roles{iot.NewRole("validRole")}}
+					},
+				},
+				&DummyConnection{
+					DeviceFunc: func() *Device {
+						return &Device{Roles: iot.Roles{iot.NewRole("invalid")}}
+					},
+				},
+				&DummyConnection{
+					DeviceFunc: func() *Device {
+						return &Device{Roles: iot.Roles{iot.NewRole("validRole")}}
+					},
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		conns := extractDestConns(test.destination, test.connections)
+
+		if len(conns) != test.expectedN {
+			t.Errorf("Unexpected size of connections are returned on test #%d: %d", i, len(conns))
+		}
+	}
+}
+
+func Test_awaitResponse(t *testing.T) {
+	tests := []struct {
+		expectedN int
+		block     bool
+		responses []*Response
+	}{
+		{
+			expectedN: 0,
+			block:     false,
+			responses: []*Response{},
+		},
+		{
+			expectedN: 2,
+			block:     false,
+			responses: []*Response{
+				{},
+				{},
+				{}, // 3rd one should be just ignored.
+			},
+		},
+		{
+			expectedN: 2,
+			block:     true,
+			responses: []*Response{
+				{},
+				{},
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for i, test := range tests {
+		in := make(chan *Response, len(test.responses))
+		var out chan []*Response
+		if test.block {
+			out = make(chan []*Response)
+		} else {
+			out = make(chan []*Response, 1)
+		}
+
+		go awaitResponse(ctx, test.expectedN, in, out)
+
+		for _, res := range test.responses {
+			in <- res
+		}
+
+		// To test blocking channel on test.block.
+		<-time.NewTimer(100 * time.Millisecond).C
+
+		select {
+		case o := <-out:
+			if test.expectedN != len(o) {
+				t.Errorf("Expected number of output is not returned on test #%d: %d.", i, len(o))
+			}
+
+		default:
+			if !test.block {
+				t.Errorf("Failed to receive output ono test #%d.", i)
+			}
+
+		}
 	}
 }

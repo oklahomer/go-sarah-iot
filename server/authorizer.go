@@ -1,10 +1,15 @@
 package server
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/oklahomer/go-sarah-iot"
+)
 
 // Device contains authorized iot device information.
 type Device struct {
-	ID string
+	ID    string
+	Roles iot.Roles
 }
 
 // Authorizer defines an interface that can be used to authorize incoming request from iot device.
