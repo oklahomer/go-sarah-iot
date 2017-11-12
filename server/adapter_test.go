@@ -15,9 +15,18 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/oklahomer/go-sarah"
 	"github.com/oklahomer/go-sarah-iot"
+	"github.com/oklahomer/go-sarah-iot/auth"
 	"github.com/oklahomer/go-sarah-iot/payload"
 	"golang.org/x/net/context"
 )
+
+type DummyAuthorizer struct {
+	AuthorizeFunc func(*http.Request) (*auth.Device, error)
+}
+
+func (d *DummyAuthorizer) Authorize(r *http.Request) (*auth.Device, error) {
+	return d.AuthorizeFunc(r)
+}
 
 type DummyEncoder struct {
 	EncodeFunc              func(string, interface{}) (int, []byte, error)
@@ -55,7 +64,7 @@ type DummyConnection struct {
 	NextReaderFunc   func() (int, io.Reader, error)
 	WriteMessageFunc func(int, []byte) error
 	PongFunc         func() error
-	DeviceFunc       func() *Device
+	DeviceFunc       func() *auth.Device
 }
 
 func (d *DummyConnection) Close() error {
@@ -74,7 +83,7 @@ func (d *DummyConnection) Pong() error {
 	return d.PongFunc()
 }
 
-func (d *DummyConnection) Device() *Device {
+func (d *DummyConnection) Device() *auth.Device {
 	return d.DeviceFunc()
 }
 
@@ -235,9 +244,9 @@ func TestAdapter_BotType(t *testing.T) {
 
 func Test_serverHandleFunc(t *testing.T) {
 	// Prepare handler func
-	device := &Device{}
+	device := &auth.Device{}
 	authorizer := &DummyAuthorizer{
-		AuthorizeFunc: func(_ *http.Request) (*Device, error) {
+		AuthorizeFunc: func(_ *http.Request) (*auth.Device, error) {
 			return device, nil
 		},
 	}
@@ -304,8 +313,8 @@ func TestAdapter_Run(t *testing.T) {
 		config:   config,
 		upgrader: &websocket.Upgrader{},
 		authorizer: &DummyAuthorizer{
-			AuthorizeFunc: func(_ *http.Request) (*Device, error) {
-				return &Device{}, nil
+			AuthorizeFunc: func(_ *http.Request) (*auth.Device, error) {
+				return &auth.Device{}, nil
 			},
 		}}
 
@@ -384,7 +393,7 @@ func TestInput_Message(t *testing.T) {
 }
 
 func TestInput_ReplyTo(t *testing.T) {
-	device := &Device{}
+	device := &auth.Device{}
 	input := &Input{
 		Device: device,
 	}
@@ -396,7 +405,7 @@ func TestInput_ReplyTo(t *testing.T) {
 
 func TestInput_SenderKey(t *testing.T) {
 	id := "id"
-	device := &Device{
+	device := &auth.Device{
 		ID: id,
 	}
 	input := &Input{
@@ -428,7 +437,7 @@ func TestResponseInput_Message(t *testing.T) {
 }
 
 func TestResponseInput_ReplyTo(t *testing.T) {
-	device := &Device{}
+	device := &auth.Device{}
 	input := &ResponseInput{
 		Device: device,
 	}
@@ -440,7 +449,7 @@ func TestResponseInput_ReplyTo(t *testing.T) {
 
 func TestResponseInput_SenderKey(t *testing.T) {
 	id := "id"
-	device := &Device{
+	device := &auth.Device{
 		ID: id,
 	}
 	input := &ResponseInput{
@@ -486,8 +495,8 @@ func Test_superviseConnection_ContextClose(t *testing.T) {
 				closed <- struct{}{}
 				return nil
 			},
-			DeviceFunc: func() *Device {
-				return &Device{}
+			DeviceFunc: func() *auth.Device {
+				return &auth.Device{}
 			},
 			NextReaderFunc: func() (int, io.Reader, error) {
 				return websocket.TextMessage, strings.NewReader(`{"type": "roled", "role": "foo", "content": {}}`), nil
@@ -498,8 +507,8 @@ func Test_superviseConnection_ContextClose(t *testing.T) {
 				closed <- struct{}{}
 				return nil
 			},
-			DeviceFunc: func() *Device {
-				return &Device{}
+			DeviceFunc: func() *auth.Device {
+				return &auth.Device{}
 			},
 			NextReaderFunc: func() (int, io.Reader, error) {
 				return websocket.TextMessage, strings.NewReader(`{"type": "roled", "role": "foo", "content": {}}`), nil
@@ -549,8 +558,8 @@ func Test_superviseConnection_ErrorOnConnectionRead(t *testing.T) {
 			closed <- struct{}{}
 			return nil
 		},
-		DeviceFunc: func() *Device {
-			return &Device{
+		DeviceFunc: func() *auth.Device {
+			return &auth.Device{
 				ID: "id",
 			}
 		},
@@ -613,8 +622,8 @@ func Test_receivePayload(t *testing.T) {
 		}
 
 		conn := &DummyConnection{
-			DeviceFunc: func() *Device {
-				return &Device{}
+			DeviceFunc: func() *auth.Device {
+				return &auth.Device{}
 			},
 			NextReaderFunc: func() (int, io.Reader, error) {
 				return websocket.TextMessage, test.Reader, nil
@@ -675,7 +684,7 @@ func Test_handleInput_ResponseInput(t *testing.T) {
 		},
 		{
 			input: &ResponseInput{
-				Device: &Device{
+				Device: &auth.Device{
 					ID: "id",
 				},
 			},
@@ -790,18 +799,18 @@ func Test_extractDestConns(t *testing.T) {
 			},
 			connections: []connection{
 				&DummyConnection{
-					DeviceFunc: func() *Device {
-						return &Device{ID: "invalid"}
+					DeviceFunc: func() *auth.Device {
+						return &auth.Device{ID: "invalid"}
 					},
 				},
 				&DummyConnection{
-					DeviceFunc: func() *Device {
-						return &Device{ID: "123"}
+					DeviceFunc: func() *auth.Device {
+						return &auth.Device{ID: "123"}
 					},
 				},
 				&DummyConnection{
-					DeviceFunc: func() *Device {
-						return &Device{ID: "123"} // Should be ignored due to ID duplication.
+					DeviceFunc: func() *auth.Device {
+						return &auth.Device{ID: "123"} // Should be ignored due to ID duplication.
 					},
 				},
 			},
@@ -813,18 +822,18 @@ func Test_extractDestConns(t *testing.T) {
 			},
 			connections: []connection{
 				&DummyConnection{
-					DeviceFunc: func() *Device {
-						return &Device{Roles: iot.Roles{iot.NewRole("validRole")}}
+					DeviceFunc: func() *auth.Device {
+						return &auth.Device{Roles: iot.Roles{iot.NewRole("validRole")}}
 					},
 				},
 				&DummyConnection{
-					DeviceFunc: func() *Device {
-						return &Device{Roles: iot.Roles{iot.NewRole("invalid")}}
+					DeviceFunc: func() *auth.Device {
+						return &auth.Device{Roles: iot.Roles{iot.NewRole("invalid")}}
 					},
 				},
 				&DummyConnection{
-					DeviceFunc: func() *Device {
-						return &Device{Roles: iot.Roles{iot.NewRole("validRole")}}
+					DeviceFunc: func() *auth.Device {
+						return &auth.Device{Roles: iot.Roles{iot.NewRole("validRole")}}
 					},
 				},
 			},

@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/oklahomer/go-sarah-iot/auth"
 	"github.com/patrickmn/go-cache"
 )
 
 // Response contains response content from device.
 type Response struct {
 	Content interface{}
-	Device  *Device
+	Device  *auth.Device
 }
 
 // TransactionStorageConfig contains configuration values for TransactionStorage.

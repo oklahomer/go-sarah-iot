@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/oklahomer/go-sarah"
+	"github.com/oklahomer/go-sarah-iot/auth"
 	"github.com/oklahomer/go-sarah-iot/payload"
 	"github.com/oklahomer/go-sarah/log"
 	"golang.org/x/net/context"
@@ -70,7 +71,7 @@ func NewConfig() *Config {
 
 type adapter struct {
 	config     *Config
-	authorizer Authorizer
+	authorizer auth.Authorizer
 	decoder    payload.Decoder
 	encoder    payload.Encoder
 	upgrader   *websocket.Upgrader
@@ -321,7 +322,7 @@ func awaitResponse(ctx context.Context, i int, in <-chan *Response, out chan<- [
 }
 
 // NewAdapter creates new Adapter with given *Config, Authorizer implementation and arbitrary amount of AdapterOption instances.
-func NewAdapter(c *Config, authorizer Authorizer, options ...AdapterOption) (sarah.Adapter, error) {
+func NewAdapter(c *Config, authorizer auth.Authorizer, options ...AdapterOption) (sarah.Adapter, error) {
 	a := &adapter{
 		config:     c,
 		authorizer: authorizer,
@@ -361,7 +362,7 @@ func NewAdapter(c *Config, authorizer Authorizer, options ...AdapterOption) (sar
 	return a, nil
 }
 
-func serverHandleFunc(authorizer Authorizer, upgrader *websocket.Upgrader, c chan<- connection) func(http.ResponseWriter, *http.Request) {
+func serverHandleFunc(authorizer auth.Authorizer, upgrader *websocket.Upgrader, c chan<- connection) func(http.ResponseWriter, *http.Request) {
 	return func(writer http.ResponseWriter, req *http.Request) {
 		device, err := authorizer.Authorize(req)
 		if err != nil {
@@ -385,7 +386,7 @@ func serverHandleFunc(authorizer Authorizer, upgrader *websocket.Upgrader, c cha
 
 type Input struct {
 	Content   interface{}
-	Device    *Device
+	Device    *auth.Device
 	TimeStamp time.Time
 }
 
@@ -410,7 +411,7 @@ func (i *Input) ReplyTo() sarah.OutputDestination {
 type ResponseInput struct {
 	TransactionID string
 	Content       interface{}
-	Device        *Device
+	Device        *auth.Device
 	TimeStamp     time.Time
 }
 
@@ -517,12 +518,12 @@ type connection interface {
 	NextReader() (int, io.Reader, error)
 	WriteMessage(int, []byte) error
 	Pong() error
-	Device() *Device
+	Device() *auth.Device
 }
 
 type connWrapper struct {
 	conn   *websocket.Conn
-	device *Device
+	device *auth.Device
 }
 
 var _ connection = (*connWrapper)(nil)
@@ -543,7 +544,7 @@ func (cw *connWrapper) Pong() error {
 	return cw.conn.WriteMessage(websocket.PongMessage, []byte{})
 }
 
-func (cw *connWrapper) Device() *Device {
+func (cw *connWrapper) Device() *auth.Device {
 	return cw.device
 }
 
