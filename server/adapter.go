@@ -442,6 +442,11 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 			return fmt.Errorf("failed to read incoming message: %s", err.Error())
 		}
 
+		// Do not handle websocket.CloseMessage, websocket.PingMessage or websocket.PongMessage.
+		// Those control messages have corresponding handler methods.
+		// Those methods can be set via setter method such as Conn.SetPingHandler.
+		//
+		// When connection is closed, Conn.NextReader returns websocket.CloseError.
 		switch messageType {
 		case websocket.TextMessage, websocket.BinaryMessage:
 			p, err := a.decoder.Decode(messageType, reader)
@@ -500,18 +505,6 @@ func (a *adapter) receivePayload(conn connection, input func(input sarah.Input) 
 
 			}
 
-		case websocket.CloseMessage:
-			return nil
-
-		case websocket.PingMessage:
-			err := conn.Pong()
-			if err != nil {
-				return fmt.Errorf("failed to send Pong message: %s", err.Error())
-			}
-
-		case websocket.PongMessage:
-			// O.K.
-
 		default:
 			log.Errorf("Unknown message type is returned: %d.", messageType)
 
@@ -531,6 +524,8 @@ type connWrapper struct {
 	conn   *websocket.Conn
 	device *Device
 }
+
+var _ connection = (*connWrapper)(nil)
 
 func (cw *connWrapper) Close() error {
 	return cw.conn.Close()

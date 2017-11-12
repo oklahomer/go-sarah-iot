@@ -638,24 +638,6 @@ func Test_receivePayload(t *testing.T) {
 	}
 }
 
-func Test_receivePayload_CloseMessage(t *testing.T) {
-	conn := &DummyConnection{
-		DeviceFunc: func() *Device {
-			return &Device{}
-		},
-		NextReaderFunc: func() (int, io.Reader, error) {
-			return websocket.CloseMessage, nil, nil
-		},
-	}
-
-	a := &adapter{}
-	err := a.receivePayload(conn, func(_ sarah.Input) error { return nil })
-
-	if err != nil {
-		t.Errorf("Unexpected error is rerturned: %s.", err.Error())
-	}
-}
-
 func Test_handleInput_Input(t *testing.T) {
 	storage := &DummyStorage{}
 	receiveInput := func(in sarah.Input) error {
