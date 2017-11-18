@@ -312,11 +312,13 @@ func TestNewResponse(t *testing.T) {
 }
 
 func TestNewTransactionResponse(t *testing.T) {
-	transactionID := "id"
+	input := &TransactionalInput{
+		TransactionID: "id",
+	}
 	role := iot.NewRole("dummy")
 	content := struct{}{}
 
-	response := NewTransactionResponse(transactionID, role, content)
+	response := NewTransactionResponse(input, role, content)
 
 	if response == nil {
 		t.Fatal("Expected *sarah.CommandResponse is not returned.")
@@ -386,5 +388,33 @@ func Test_encodeOutput(t *testing.T) {
 				t.Errorf("Encoder.EncodeTransactional is not called on test #%d.", i)
 			}
 		}
+	}
+}
+
+func TestToTransactionalInput(t *testing.T) {
+	input := &TransactionalInput{}
+
+	ti, ok := ToTransactionalInput(input)
+
+	if !ok {
+		t.Error("Failed to cast type.")
+	}
+
+	if ti == nil {
+		t.Error("Returned value is nil.")
+	}
+}
+
+func TestToInput(t *testing.T) {
+	input := &Input{}
+
+	i, ok := ToInput(input)
+
+	if !ok {
+		t.Error("Failed to cast type.")
+	}
+
+	if i == nil {
+		t.Error("Returned value is nil.")
 	}
 }

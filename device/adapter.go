@@ -369,6 +369,7 @@ func (i *TransactionalInput) ReplyTo() sarah.OutputDestination {
 }
 
 // NewResponse creates *sarah.CommandResponse with given iot.Role and payload content.
+//
 // This method is seldom used because usually iot.server initiates requests and device responds,
 // which means transaction id is usually given as part of input and is to be used as part of response.
 // NewTransactionResponse should be used for such case.
@@ -384,11 +385,11 @@ func NewResponse(role *iot.Role, payloadContent interface{}) *sarah.CommandRespo
 
 // NewTransactionResponse can be used to build sarah.CommandResponse with given clues.
 // When this is returned by sarah.Command, this object is internally used to construct responding payload.
-func NewTransactionResponse(transactionID string, role *iot.Role, payloadContent interface{}) *sarah.CommandResponse {
+func NewTransactionResponse(input *TransactionalInput, role *iot.Role, payloadContent interface{}) *sarah.CommandResponse {
 	return &sarah.CommandResponse{
 		UserContext: nil,
 		Content: &outputContent{
-			transactionID:  transactionID,
+			transactionID:  input.TransactionID,
 			role:           role,
 			payloadContent: payloadContent,
 		},
@@ -412,4 +413,38 @@ type outputContent struct {
 
 	// This field is set if and only if the outgoing payload represents a transactional output, which is a response to given request.
 	transactionID string
+}
+
+// ToTransactionalInput is a utility method that tries to convert given sarah.Input to *device.TransactionalInput.
+// In typical usage, when the input is *device.TransactionalInput, returning *sarah.CommandResponse should be constructed with
+// device.NewTransactionResponse to return transactional response.
+//
+// func CommandFunc(i context.Context, input sarah.Input) (*sarah.CommandResponse, error) {
+//     ti, ok := device.ToTransactionalInput(input)
+//     if ok {
+//	       return device.NewTransactionResponse(ti, ..., ...), nil
+//     }
+//
+//     return ...
+// }
+func ToTransactionalInput(input sarah.Input) (*TransactionalInput, bool) {
+	ti, ok := input.(*TransactionalInput)
+	return ti, ok
+}
+
+// ToInput is a utility method that tries to convert given sarah.Input to *device.Input.
+// In typical usage, when the input is *device.Input, returning *sarah.CommandResponse should be constructed with
+// device.NewOutput to send regular output.
+//
+// func CommandFunc(i context.Context, input sarah.Input) (*sarah.CommandResponse, error) {
+//     i, ok := device.ToInput(input)
+//     if ok {
+//	       return device.NewOutput(ti, ..., ...), nil
+//     }
+//
+//     return ...
+// }
+func ToInput(input sarah.Input) (*Input, bool) {
+	i, ok := input.(*Input)
+	return i, ok
 }

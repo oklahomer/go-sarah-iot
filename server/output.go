@@ -62,7 +62,7 @@ var _ sarah.Output = (*transactionalOutput)(nil)
 
 // NewTransactionalOutput creates sarah.Output that represents a request for enslaved devices and returns it with communicating channel.
 func NewTransactionalOutput(transactionID string, destination *Destination, content interface{}) (sarah.Output, <-chan []*Response) {
-	c := make(chan []*Response)
+	c := make(chan []*Response, 1)
 	return &transactionalOutput{
 		transactionID: transactionID,
 		c:             c,
