@@ -85,7 +85,7 @@ func TestWithDecoder(t *testing.T) {
 	err := opt(adapter)
 
 	if err != nil {
-		t.Fatalf("AdapterOption returned an error: %s.", err.Error)
+		t.Fatalf("AdapterOption returned an error: %s.", err.Error())
 	}
 
 	if adapter.decoder != decoder {
@@ -101,7 +101,7 @@ func TestWithEncoder(t *testing.T) {
 	err := opt(adapter)
 
 	if err != nil {
-		t.Fatalf("AdapterOption returned an error: %s.", err.Error)
+		t.Fatalf("AdapterOption returned an error: %s.", err.Error())
 	}
 
 	if adapter.encoder != encoder {
