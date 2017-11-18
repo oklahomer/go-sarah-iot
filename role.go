@@ -17,6 +17,7 @@ func (r *Role) String() string {
 	return r.value
 }
 
+// UnmarshalText converts given text to iot.Role value.
 func (r *Role) UnmarshalText(b []byte) error {
 	if len(b) == 0 {
 		return fmt.Errorf("role value should not be empty")
@@ -26,6 +27,7 @@ func (r *Role) UnmarshalText(b []byte) error {
 	return nil
 }
 
+// MarshalJSON returns stringified representation of *iot.Role.
 func (r *Role) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, r.value)), nil
 }

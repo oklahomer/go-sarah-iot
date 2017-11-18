@@ -76,7 +76,7 @@ func TestDispatcher_Dispatch(t *testing.T) {
 	err := d.Dispatch(destinationArg, contentArg)
 
 	if err != nil {
-		t.Fatalf("Error occured: %s.", err.Error())
+		t.Fatalf("Error occurred: %s.", err.Error())
 	}
 
 	if !sent {
@@ -113,7 +113,7 @@ func TestDispatcher_DispatchTransactional(t *testing.T) {
 	responses, err := d.DispatchTransactional(destinationArg, contentArg, 1*time.Second)
 
 	if err != nil {
-		t.Fatalf("Error occured: %s.", err.Error())
+		t.Fatalf("Error occurred: %s.", err.Error())
 	}
 
 	if !sent {
@@ -138,15 +138,8 @@ func TestDispatcher_DispatchTransactional(t *testing.T) {
 }
 
 func TestDispatcher_DispatchTransactional_Timeout(t *testing.T) {
-	sent := false
-	var destination sarah.OutputDestination
-	var content interface{}
 	bot := &DummyBot{
-		SendMessageFunc: func(_ context.Context, o sarah.Output) {
-			sent = true
-			destination = o.Destination()
-			content = o.Content()
-		},
+		SendMessageFunc: func(_ context.Context, o sarah.Output) {},
 	}
 	d := &dispatcher{bot: bot}
 

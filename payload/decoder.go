@@ -25,7 +25,7 @@ type RoledPayload struct {
 
 var _ DecodedPayload = (*RoledPayload)(nil)
 
-// ResponosePayload represents incoming payload with transaction id.
+// TransactionalPayload represents incoming payload with transaction id.
 type TransactionalPayload struct {
 	TransactionID string
 	Content       interface{}

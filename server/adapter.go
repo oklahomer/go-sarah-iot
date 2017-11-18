@@ -384,6 +384,7 @@ func serverHandleFunc(authorizer auth.Authorizer, upgrader *websocket.Upgrader, 
 	}
 }
 
+// Input represents an input from iot.device.
 type Input struct {
 	Content   interface{}
 	Device    *auth.Device
@@ -392,22 +393,27 @@ type Input struct {
 
 var _ sarah.Input = (*Input)(nil)
 
+// SenderKey returns string representing message sender.
 func (i Input) SenderKey() string {
 	return i.Device.ID
 }
 
+// Message returns sent message.
 func (i *Input) Message() string {
 	return ""
 }
 
+// SentAt returns message event's timestamp.
 func (i *Input) SentAt() time.Time {
 	return i.TimeStamp
 }
 
+// ReplyTo returns replying destination.
 func (i *Input) ReplyTo() sarah.OutputDestination {
 	return i.Device
 }
 
+// ResponseInput represents an response from iot.device.
 type ResponseInput struct {
 	TransactionID string
 	Content       interface{}
@@ -417,18 +423,22 @@ type ResponseInput struct {
 
 var _ sarah.Input = (*ResponseInput)(nil)
 
+// SenderKey returns string representing message sender.
 func (i ResponseInput) SenderKey() string {
 	return i.Device.ID
 }
 
+// Message returns sent message.
 func (i *ResponseInput) Message() string {
 	return ""
 }
 
+// SentAt returns message event's timestamp.
 func (i *ResponseInput) SentAt() time.Time {
 	return i.TimeStamp
 }
 
+// ReplyTo returns replying destination.
 func (i *ResponseInput) ReplyTo() sarah.OutputDestination {
 	return i.Device
 }

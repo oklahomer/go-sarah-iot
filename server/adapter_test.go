@@ -704,9 +704,9 @@ func Test_handleInput_ResponseInput(t *testing.T) {
 			GetFunc: func(_ string) (chan *Response, error) {
 				if test.stored {
 					return responseCh, nil
-				} else {
-					return nil, notStored
 				}
+
+				return nil, notStored
 			},
 		}
 		inputCh := make(chan sarah.Input, 1)

@@ -12,7 +12,7 @@ const (
 	// AuthorizerDefaultIDHeaderName is a default header name to pass device id.
 	AuthorizerDefaultIDHeaderName = "X-Device-Identifier"
 
-	// AuthorizeDefaultRolesHeaderName is a default header name to pass one or more iot.Role values.
+	// AuthorizerDefaultRolesHeaderName is a default header name to pass one or more iot.Role values.
 	// When multiple values are to be passed, use multiple headers.
 	AuthorizerDefaultRolesHeaderName = "X-Device-Role"
 
@@ -61,6 +61,8 @@ type Device struct {
 	Roles iot.Roles
 }
 
+// NewDefaultAuthorizerConfig returns pointer to DefaultAuthorizerConfig struct with default settings.
+// To override each field values, pass this instance to jsono.Unmarshal/yaml.Unmarshal or assign directly.
 func NewDefaultAuthorizerConfig() *DefaultAuthorizerConfig {
 	return &DefaultAuthorizerConfig{
 		TokenValue: "",

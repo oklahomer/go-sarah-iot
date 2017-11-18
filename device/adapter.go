@@ -29,7 +29,7 @@ var (
 )
 
 const (
-	// IotDevice is a designated sarah.BotType for iot device.
+	// IoTDevice is a designated sarah.BotType for iot device.
 	IoTDevice sarah.BotType = "iot-device"
 )
 
@@ -319,6 +319,7 @@ func (cw *connWrapper) Pong() error {
 	return cw.conn.WriteMessage(websocket.PongMessage, []byte{})
 }
 
+// Input represents an input from iot.server.
 type Input struct {
 	Sender    string
 	Content   interface{}
@@ -327,22 +328,27 @@ type Input struct {
 
 var _ sarah.Input = (*Input)(nil)
 
+// SenderKey returns string representing message sender.
 func (i Input) SenderKey() string {
 	return i.Sender
 }
 
+// Message returns sent message.
 func (i *Input) Message() string {
 	return ""
 }
 
+// SentAt returns message event's timestamp.
 func (i *Input) SentAt() time.Time {
 	return i.TimeStamp
 }
 
+// ReplyTo returns replying destination.
 func (i *Input) ReplyTo() sarah.OutputDestination {
 	return ConnectedOutputDestination
 }
 
+// TransactionalInput represents an transactional input from iot.server that contains transaction ID to be part of response.
 type TransactionalInput struct {
 	TransactionID string
 	Sender        string
@@ -352,18 +358,22 @@ type TransactionalInput struct {
 
 var _ sarah.Input = (*TransactionalInput)(nil)
 
+// SenderKey returns string representing message sender.
 func (i TransactionalInput) SenderKey() string {
 	return i.Sender
 }
 
+// Message returns sent message.
 func (i *TransactionalInput) Message() string {
 	return ""
 }
 
+// SentAt returns message event's timestamp.
 func (i *TransactionalInput) SentAt() time.Time {
 	return i.TimeStamp
 }
 
+// ReplyTo returns replying destination.
 func (i *TransactionalInput) ReplyTo() sarah.OutputDestination {
 	return ConnectedOutputDestination
 }
