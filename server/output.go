@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/oklahomer/go-sarah"
 	"github.com/oklahomer/go-sarah-iot"
@@ -49,6 +50,17 @@ func (db *DestinationBuilder) Build() (*Destination, error) {
 		role:     db.role,
 		deviceID: db.deviceID,
 	}, nil
+}
+
+// MustBuild is like Build but panics if any error occurs on Build.
+// It simplifies safe initialization of Destination on process start up.
+func (db *DestinationBuilder) MustBuild() *Destination {
+	destination, err := db.Build()
+	if err != nil {
+		panic(fmt.Sprintf("Error on building Destination: %s", err.Error()))
+	}
+
+	return destination
 }
 
 type transactionalOutput struct {

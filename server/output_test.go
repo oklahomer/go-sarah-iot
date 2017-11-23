@@ -159,3 +159,23 @@ func TestDestinationBuilder_Build(t *testing.T) {
 		t.Errorf("Given *iot.Role is not set: %+v.", destination.role)
 	}
 }
+
+func TestDestinationBuilder_MustBuild(t *testing.T) {
+	builder := &DestinationBuilder{}
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected pahnic did not occur.")
+			}
+		}()
+		builder.MustBuild()
+	}()
+
+	role := iot.NewRole("dummy")
+	builder.role = role
+	destination := builder.MustBuild()
+
+	if destination.role != role {
+		t.Errorf("Given *iot.Role is not set: %+v.", destination.role)
+	}
+}
