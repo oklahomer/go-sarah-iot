@@ -39,8 +39,8 @@ func (db *DestinationBuilder) DeviceID(id string) *DestinationBuilder {
 	return db
 }
 
-// Build builds sarah.OutputDestination with preset arguments.
-func (db *DestinationBuilder) Build() (sarah.OutputDestination, error) {
+// Build builds Destination instance with preset arguments.
+func (db *DestinationBuilder) Build() (*Destination, error) {
 	if db.role == nil {
 		return nil, errors.New("*iot.Role must be set")
 	}

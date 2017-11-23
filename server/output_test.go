@@ -151,17 +151,11 @@ func TestDestinationBuilder_Build(t *testing.T) {
 		t.Fatalf("Unexpected error is returned: %s.", err.Error())
 	}
 
-	typed, ok := destination.(*Destination)
-
-	if !ok {
-		t.Fatalf("Returned sarah.OutputDestination is not instance of Output: %T.", destination)
+	if destination.deviceID != deviceID {
+		t.Errorf("Given device id is not set: %s.", destination.deviceID)
 	}
 
-	if typed.deviceID != deviceID {
-		t.Errorf("Given device id is not set: %s.", typed.deviceID)
-	}
-
-	if typed.role != role {
-		t.Errorf("Given *iot.Role is not set: %+v.", typed.role)
+	if destination.role != role {
+		t.Errorf("Given *iot.Role is not set: %+v.", destination.role)
 	}
 }
